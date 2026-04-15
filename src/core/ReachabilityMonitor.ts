@@ -154,11 +154,15 @@ export class ReachabilityMonitor {
   }
 
   private setState(newState: Partial<ReachabilityState>): void {
-    const prevState = this.state;
+    const prevIsOnline = this.state.isOnline;
+    const prevLastChecked = this.state.lastChecked;
     this.state = { ...this.state, ...newState };
 
-    // Only notify if isOnline actually changed
-    if (prevState.isOnline !== this.state.isOnline) {
+    // Notify if isOnline changed OR if lastChecked changed (probe completed)
+    if (
+      prevIsOnline !== this.state.isOnline ||
+      prevLastChecked !== this.state.lastChecked
+    ) {
       this.notifyListeners();
     }
   }

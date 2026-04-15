@@ -51,7 +51,7 @@ export function useReachability(
 
     // Subscribe to state changes
     const unsubscribe = monitor.subscribe((newState) => {
-      setState(newState);
+      setState({ ...newState });
     });
 
     return () => {
@@ -59,12 +59,6 @@ export function useReachability(
       monitor.destroy();
       monitorRef.current = null;
     };
-  }, [memoizedOptions]);
-
-  // Update config when options change (for existing monitor)
-  useEffect(() => {
-    if (isSSR() || !monitorRef.current) return;
-    monitorRef.current.updateConfig(memoizedOptions);
   }, [memoizedOptions]);
 
   const checkNow = useCallback(() => {

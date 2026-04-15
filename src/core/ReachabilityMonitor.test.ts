@@ -373,7 +373,7 @@ describe('ReachabilityMonitor with mocked fetch', () => {
     );
   });
 
-  it('should only emit on state change', async () => {
+  it('should emit on every completed probe (lastChecked updates)', async () => {
     fetchMock.mockResolvedValue({ ok: true, type: 'opaque' });
 
     monitor = new ReachabilityMonitor({
@@ -393,13 +393,12 @@ describe('ReachabilityMonitor with mocked fetch', () => {
 
     // Called again when state changed to online
     expect(listener).toHaveBeenCalledTimes(2);
-    const callCount = listener.mock.calls.length;
 
-    // Poll again - should not emit since still online
+    // Poll again - should emit because lastChecked updates
     await vi.advanceTimersByTimeAsync(1000);
 
-    // Should not have additional calls since state didn't change
-    expect(listener.mock.calls.length).toBe(callCount);
+    // Should have additional call since lastChecked changed
+    expect(listener).toHaveBeenCalledTimes(3);
 
     monitor.stop();
   });
