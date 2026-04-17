@@ -184,6 +184,37 @@ The library is SSR-safe. During server-side rendering:
 - `status` returns `'unknown'`
 - No network requests are made
 
+## Example App
+
+![Example App Screenshot](./docs/example.png)
+
+An interactive example app is included in the `example/` directory.
+
+### Running the Example
+
+```bash
+# Clone the repo
+git clone https://github.com/sanishkr/react-reachability.git
+cd react-reachability
+
+# Install dependencies and build the library
+npm install
+npm run build
+
+# Run the example app
+cd example
+npm install
+npm run dev
+```
+
+Then open [http://localhost:5173](http://localhost:5173) in your browser.
+
+The example demonstrates:
+- **React Hook** (`useReachability`) with live status updates
+- **Class-based** (`ReachabilityMonitor`) usage
+- **Activity log** showing Worker ↔ Main thread communication
+- Manual "Check Now" functionality
+
 ## License
 
 MIT
