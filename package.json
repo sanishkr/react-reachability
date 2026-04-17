@@ -48,7 +48,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": ""
+    "url": "https://github.com/sanishkr/react-reachability.git"
   },
   "peerDependencies": {
     "react": ">=16.8.0"
