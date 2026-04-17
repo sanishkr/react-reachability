@@ -11,6 +11,9 @@ export type {
   ReachabilityState,
   ReachabilityConfig,
   ReachabilityListener,
+  LogEntry,
+  LogSource,
+  LogCallback,
 } from './core/types';
 
 // Defaults

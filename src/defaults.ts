@@ -16,4 +16,5 @@ export const DEFAULT_CONFIG: ReachabilityConfig = {
   interval: DEFAULT_INTERVAL,
   retries: DEFAULT_RETRIES,
   enabled: true,
+  notifyOnlyOnChange: true,
 };

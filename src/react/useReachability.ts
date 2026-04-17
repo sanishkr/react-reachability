@@ -31,6 +31,8 @@ export function useReachability(
       interval: options.interval,
       retries: options.retries,
       enabled: options.enabled,
+      onLog: options.onLog,
+      notifyOnlyOnChange: options.notifyOnlyOnChange,
     }),
     [
       // Stringify urls for comparison since it can be string or array
@@ -39,6 +41,8 @@ export function useReachability(
       options.interval,
       options.retries,
       options.enabled,
+      options.onLog,
+      options.notifyOnlyOnChange,
     ]
   );
 

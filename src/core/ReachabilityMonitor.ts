@@ -5,11 +5,16 @@ import type {
   ReachabilityListener,
   WorkerMessage,
   WorkerResponse,
+  LogSource,
 } from './types';
 import { DEFAULT_CONFIG } from '../defaults';
 
 // Inline worker code as a string for blob URL creation
 const workerCode = `
+let intervalId = null;
+let config = null;
+let lastIsOnline = null;
+
 async function probeUrl(url, timeout) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -45,20 +50,53 @@ async function probeUrls(urls, timeout, retries) {
   return false;
 }
 
-self.onmessage = async (event) => {
-  const { type, urls, timeout, retries } = event.data;
+async function runProbe() {
+  if (!config) return;
+  
+  self.postMessage({ type: 'probing' });
+  
+  try {
+    const isOnline = await probeUrls(config.urls, config.timeout, config.retries);
+    // Always send result so main thread can update lastChecked
+    const stateChanged = lastIsOnline !== isOnline;
+    lastIsOnline = isOnline;
+    self.postMessage({ type: 'result', isOnline, stateChanged });
+  } catch (error) {
+    const stateChanged = lastIsOnline !== false;
+    lastIsOnline = false;
+    self.postMessage({
+      type: 'result',
+      isOnline: false,
+      stateChanged,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+}
 
-  if (type === 'probe') {
-    try {
-      const isOnline = await probeUrls(urls, timeout, retries);
-      self.postMessage({ type: 'result', isOnline });
-    } catch (error) {
-      self.postMessage({
-        type: 'result',
-        isOnline: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
+self.onmessage = async (event) => {
+  const { type } = event.data;
+
+  if (type === 'start') {
+    config = event.data;
+    lastIsOnline = null;
+    
+    // Run initial probe
+    await runProbe();
+    
+    // Set up interval in worker
+    if (intervalId) clearInterval(intervalId);
+    intervalId = setInterval(runProbe, config.interval);
+    
+  } else if (type === 'probe') {
+    // Manual probe request
+    await runProbe();
+    
+  } else if (type === 'stop') {
+    if (intervalId) {
+      clearInterval(intervalId);
+      intervalId = null;
     }
+    config = null;
   }
 };
 `;
@@ -150,7 +188,25 @@ export class ReachabilityMonitor {
       interval: options.interval ?? DEFAULT_CONFIG.interval,
       retries: options.retries ?? DEFAULT_CONFIG.retries,
       enabled: options.enabled ?? DEFAULT_CONFIG.enabled,
+      onLog: options.onLog,
+      notifyOnlyOnChange:
+        options.notifyOnlyOnChange ?? DEFAULT_CONFIG.notifyOnlyOnChange,
     };
+  }
+
+  private log(
+    source: LogSource,
+    message: string,
+    data?: Record<string, unknown>
+  ): void {
+    if (this.config.onLog) {
+      this.config.onLog({
+        timestamp: new Date(),
+        source,
+        message,
+        data,
+      });
+    }
   }
 
   private setState(newState: Partial<ReachabilityState>): void {
@@ -183,36 +239,82 @@ export class ReachabilityMonitor {
     this.worker = createWorker();
 
     if (this.worker) {
+      this.log('main', 'Web Worker created successfully');
+
       this.worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
-        const { isOnline, error } = event.data;
-        this.isProbing = false;
-        this.setState({
-          isOnline,
-          status: isOnline ? 'online' : 'offline',
-          lastChecked: new Date(),
-          error: error ? new Error(error) : null,
-        });
+        const { type, isOnline, stateChanged, error } = event.data;
+
+        if (type === 'probing') {
+          this.log('worker', 'Starting network probe');
+          this.setState({ status: 'checking' });
+        } else if (type === 'result') {
+          this.isProbing = false;
+          this.log('worker', 'Probe completed', { isOnline, stateChanged });
+
+          // Decide whether to update main thread based on config
+          const shouldNotify = stateChanged || !this.config.notifyOnlyOnChange;
+
+          if (shouldNotify) {
+            if (stateChanged) {
+              this.log(
+                'main',
+                `State changed: ${isOnline ? 'online' : 'offline'}`,
+                { previousState: this.state.isOnline, newState: isOnline }
+              );
+            } else {
+              this.log('main', 'Probe completed (updating lastChecked)', {
+                isOnline,
+              });
+            }
+            this.setState({
+              isOnline: isOnline ?? false,
+              status: isOnline ? 'online' : 'offline',
+              lastChecked: new Date(),
+              error: error ? new Error(error) : null,
+            });
+          }
+        }
       };
 
       this.worker.onerror = () => {
         this.isProbing = false;
+        this.log('main', 'Worker error, falling back to main thread');
         // Worker failed, fall back to main thread
         this.terminateWorker();
-        this.probeMainThread();
+        this.startMainThreadFallback();
       };
+    } else {
+      this.log('main', 'Web Worker not available, using main thread');
     }
   }
 
   private terminateWorker(): void {
     if (this.worker) {
+      this.worker.postMessage({ type: 'stop' });
       this.worker.terminate();
       this.worker = null;
     }
   }
 
+  private startMainThreadFallback(): void {
+    this.probeMainThread();
+
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+    }
+
+    this.intervalId = setInterval(() => {
+      this.probeMainThread();
+    }, this.config.interval);
+  }
+
   private async probeMainThread(): Promise<void> {
     if (this.isProbing) return;
     this.isProbing = true;
+    this.log('main', 'Starting probe on main thread', {
+      urls: this.config.urls,
+      timeout: this.config.timeout,
+    });
 
     try {
       const isOnline = await mainThreadProbe(
@@ -220,6 +322,9 @@ export class ReachabilityMonitor {
         this.config.timeout,
         this.config.retries
       );
+      this.log('main', `Probe completed: ${isOnline ? 'online' : 'offline'}`, {
+        isOnline,
+      });
       this.setState({
         isOnline,
         status: isOnline ? 'online' : 'offline',
@@ -227,6 +332,9 @@ export class ReachabilityMonitor {
         error: null,
       });
     } catch (error) {
+      this.log('main', 'Probe failed with error', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
       this.setState({
         isOnline: false,
         status: 'offline',
@@ -238,20 +346,12 @@ export class ReachabilityMonitor {
     }
   }
 
-  private probe(): void {
+  private sendManualProbe(): void {
     if (this.isProbing) return;
-
-    this.setState({ status: 'checking' });
 
     if (this.worker) {
       this.isProbing = true;
-      const message: WorkerMessage = {
-        type: 'probe',
-        urls: this.config.urls,
-        timeout: this.config.timeout,
-        retries: this.config.retries,
-      };
-      this.worker.postMessage(message);
+      this.worker.postMessage({ type: 'probe' });
     } else {
       this.probeMainThread();
     }
@@ -260,19 +360,31 @@ export class ReachabilityMonitor {
   start(): void {
     if (isSSR()) return;
 
+    this.log('main', 'Starting reachability monitor', {
+      interval: this.config.interval,
+      timeout: this.config.timeout,
+      urls: this.config.urls,
+    });
     this.setupWorker();
-    this.probe();
 
-    if (this.intervalId) {
-      clearInterval(this.intervalId);
+    if (this.worker) {
+      // Worker manages its own interval
+      const message: WorkerMessage = {
+        type: 'start',
+        urls: this.config.urls,
+        timeout: this.config.timeout,
+        interval: this.config.interval,
+        retries: this.config.retries,
+      };
+      this.worker.postMessage(message);
+    } else {
+      // Fallback to main thread with interval
+      this.startMainThreadFallback();
     }
-
-    this.intervalId = setInterval(() => {
-      this.probe();
-    }, this.config.interval);
   }
 
   stop(): void {
+    this.log('main', 'Stopping reachability monitor');
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
@@ -282,7 +394,8 @@ export class ReachabilityMonitor {
 
   checkNow(): void {
     if (isSSR()) return;
-    this.probe();
+    this.log('main', 'Manual check triggered');
+    this.sendManualProbe();
   }
 
   subscribe(listener: ReachabilityListener): () => void {

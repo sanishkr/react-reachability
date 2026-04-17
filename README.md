@@ -104,6 +104,8 @@ React hook for network reachability detection.
 | `interval` | `number` | `30000` | Polling interval in milliseconds |
 | `retries` | `number` | `1` | Number of retries per URL before trying next |
 | `enabled` | `boolean` | `true` | Enable/disable monitoring |
+| `notifyOnlyOnChange` | `boolean` | `true` | If `true`, only notify when `isOnline` changes. If `false`, notify on every probe. |
+| `onLog` | `(entry: LogEntry) => void` | `undefined` | Callback for debug logging |
 
 #### Return Value
 
@@ -156,7 +158,15 @@ You can override these by providing your own `urls` option.
 1. **Web Worker**: Probes run in a Web Worker to avoid blocking the main thread
 2. **Fetch with no-cors**: Uses `fetch` with `mode: 'no-cors'` to work cross-origin
 3. **Fallback**: If Worker is unavailable, falls back to main thread probing
-4. **State changes only**: Listeners are only notified when `isOnline` actually changes
+4. **State changes only**: By default, listeners are only notified when `isOnline` actually changes
+
+### `notifyOnlyOnChange` Option
+
+By default (`notifyOnlyOnChange: true`), the main thread is only notified when the online/offline state changes. This is efficient and avoids unnecessary re-renders.
+
+If you set `notifyOnlyOnChange: false`, the main thread will be notified after **every** probe interval, updating `lastChecked` each time.
+
+> ⚠️ **Warning**: Setting `notifyOnlyOnChange: false` means the main thread callback will be invoked every `interval` milliseconds (default 30 seconds), which may cause unnecessary re-renders in React applications. Only use this if you need to display a continuously updating `lastChecked` timestamp.
 
 ## Browser Support
 
