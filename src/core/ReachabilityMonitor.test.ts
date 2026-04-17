@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ReachabilityMonitor } from './ReachabilityMonitor';
 
 describe('ReachabilityMonitor', () => {
@@ -137,7 +137,6 @@ describe('ReachabilityMonitor', () => {
       monitor = new ReachabilityMonitor({ enabled: false });
       monitor.start();
 
-      const initialState = monitor.getState();
       monitor.checkNow();
 
       expect(monitor.getState().status).toBe('checking');

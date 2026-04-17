@@ -49,6 +49,8 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
   const { type, urls, timeout, retries } = event.data;
 
   if (type === 'probe') {
+    if (!urls || !timeout || retries === undefined) return;
+
     try {
       const isOnline = await probeUrls(urls, timeout, retries);
       const response: WorkerResponse = { type: 'result', isOnline };

@@ -1,13 +1,13 @@
+import { DEFAULT_CONFIG } from '../defaults';
 import type {
-  ReachabilityOptions,
-  ReachabilityState,
+  LogSource,
   ReachabilityConfig,
   ReachabilityListener,
+  ReachabilityOptions,
+  ReachabilityState,
   WorkerMessage,
   WorkerResponse,
-  LogSource,
 } from './types';
-import { DEFAULT_CONFIG } from '../defaults';
 
 // Inline worker code as a string for blob URL creation
 const workerCode = `
@@ -349,9 +349,16 @@ export class ReachabilityMonitor {
   private sendManualProbe(): void {
     if (this.isProbing) return;
 
+    this.setState({ status: 'checking' });
+
     if (this.worker) {
       this.isProbing = true;
-      this.worker.postMessage({ type: 'probe' });
+      this.worker.postMessage({
+        type: 'probe',
+        urls: this.config.urls,
+        timeout: this.config.timeout,
+        retries: this.config.retries,
+      });
     } else {
       this.probeMainThread();
     }
@@ -359,6 +366,8 @@ export class ReachabilityMonitor {
 
   start(): void {
     if (isSSR()) return;
+
+    this.setState({ status: 'checking' });
 
     this.log('main', 'Starting reachability monitor', {
       interval: this.config.interval,

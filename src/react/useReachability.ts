@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ReachabilityMonitor } from '../core/ReachabilityMonitor';
 import type { ReachabilityOptions, ReachabilityState } from '../core/types';
 
@@ -35,8 +35,7 @@ export function useReachability(
       notifyOnlyOnChange: options.notifyOnlyOnChange,
     }),
     [
-      // Stringify urls for comparison since it can be string or array
-      JSON.stringify(options.urls),
+      options.urls,
       options.timeout,
       options.interval,
       options.retries,
